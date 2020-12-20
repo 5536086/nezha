@@ -10,7 +10,9 @@ NZ_BASE_PATH="/opt/nezha"
 NZ_DASHBOARD_PATH="${NZ_BASE_PATH}/dashboard"
 NZ_AGENT_PATH="${NZ_BASE_PATH}/agent"
 NZ_AGENT_SERVICE="/etc/systemd/system/nezha-agent.service"
-NZ_VERSION="v1.0.0"
+NZ_VERSION="v1.0.2"
+GITHUB_RAW_URL="raw.githubusercontent.com"
+GITHUB_URL="github.com"
 
 red='\033[0;31m'
 green='\033[0;32m'
@@ -78,6 +80,12 @@ pre_check() {
     else
         os_arch="386"
     fi
+
+    ## server location
+    if curl -s api.myip.la/json | grep -q 'China'; then
+        GITHUB_RAW_URL="raw.sevencdn.com"
+        GITHUB_URL="hub.fastgit.org"
+    fi
 }
 
 confirm() {
@@ -137,10 +145,10 @@ install_dashboard() {
     command -v docker-compose >/dev/null 2>&1
     if [[ $? != 0 ]]; then
         echo -e "正在安装 Docker Compose"
-        curl -L "https://github.com/docker/compose/releases/download/1.25.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose >/dev/null 2>&1 &&
+        wget -O /usr/local/bin/docker-compose "https://${GITHUB_URL}/docker/compose/releases/download/1.25.0/docker-compose-$(uname -s)-$(uname -m)" >/dev/null 2>&1 &&
             chmod +x /usr/local/bin/docker-compose
         if [[ $? != 0 ]]; then
-            echo -e "${red}下载脚本失败，请检查本机能否连接 github.com${plain}"
+            echo -e "${red}下载脚本失败，请检查本机能否连接 ${GITHUB_URL}${plain}"
             return 0
         fi
         echo -e "${green}Docker Compose${plain} 安装成功"
@@ -163,9 +171,9 @@ install_agent() {
     chmod 777 -R $NZ_AGENT_PATH
 
     echo -e "正在下载监控端"
-    curl -L https://github.com/naiba/nezha/releases/latest/download/nezha-agent_linux_${os_arch}.tar.gz -o nezha-agent_linux_${os_arch}.tar.gz >/dev/null 2>&1
+    wget -O nezha-agent_linux_${os_arch}.tar.gz https://${GITHUB_URL}/naiba/nezha/releases/latest/download/nezha-agent_linux_${os_arch}.tar.gz >/dev/null 2>&1
     if [[ $? != 0 ]]; then
-        echo -e "${red}Release 下载失败，请检查本机能否连接 github.com${plain}"
+        echo -e "${red}Release 下载失败，请检查本机能否连接 ${GITHUB_URL}${plain}"
         return 0
     fi
     tar xf nezha-agent_linux_${os_arch}.tar.gz &&
@@ -182,9 +190,9 @@ install_agent() {
 modify_agent_config() {
     echo -e "> 修改Agent配置"
 
-    curl -L https://raw.githubusercontent.com/naiba/nezha/master/script/nezha-agent.service -o $NZ_AGENT_SERVICE >/dev/null 2>&1
+    wget -O $NZ_AGENT_SERVICE https://${GITHUB_RAW_URL}/naiba/nezha/master/script/nezha-agent.service >/dev/null 2>&1
     if [[ $? != 0 ]]; then
-        echo -e "${red}文件下载失败，请检查本机能否连接 raw.githubusercontent.com${plain}"
+        echo -e "${red}文件下载失败，请检查本机能否连接 ${GITHUB_RAW_URL}${plain}"
         return 0
     fi
 
@@ -223,17 +231,17 @@ modify_dashboard_config() {
     echo -e "> 修改面板配置"
 
     echo -e "正在下载 Docker 脚本"
-    curl -L https://raw.githubusercontent.com/naiba/nezha/master/script/docker-compose.yaml -o ${NZ_DASHBOARD_PATH}/docker-compose.yaml >/dev/null 2>&1
+    wget -O ${NZ_DASHBOARD_PATH}/docker-compose.yaml https://${GITHUB_RAW_URL}/naiba/nezha/master/script/docker-compose.yaml >/dev/null 2>&1
     if [[ $? != 0 ]]; then
-        echo -e "${red}下载脚本失败，请检查本机能否连接 raw.githubusercontent.com${plain}"
+        echo -e "${red}下载脚本失败，请检查本机能否连接 ${GITHUB_RAW_URL}${plain}"
         return 0
     fi
 
     mkdir -p $NZ_DASHBOARD_PATH/data
 
-    curl -L https://raw.githubusercontent.com/naiba/nezha/master/script/config.yaml -o ${NZ_DASHBOARD_PATH}/data/config.yaml >/dev/null 2>&1
+    wget -O ${NZ_DASHBOARD_PATH}/data/config.yaml https://${GITHUB_RAW_URL}/naiba/nezha/master/script/config.yaml >/dev/null 2>&1
     if [[ $? != 0 ]]; then
-        echo -e "${red}下载脚本失败，请检查本机能否连接 raw.githubusercontent.com${plain}"
+        echo -e "${red}下载脚本失败，请检查本机能否连接 ${GITHUB_RAW_URL}${plain}"
         return 0
     fi
 
@@ -275,6 +283,8 @@ modify_dashboard_config() {
 }
 
 restart_and_update() {
+    echo -e "> 重启并更新面板"
+
     cd $NZ_DASHBOARD_PATH
     docker-compose pull
     docker-compose down
@@ -292,6 +302,8 @@ restart_and_update() {
 }
 
 start_dashboard() {
+    echo -e "> 启动面板"
+
     cd $NZ_DASHBOARD_PATH && docker-compose up -d
     if [[ $? == 0 ]]; then
         echo -e "${green}哪吒面板 启动成功${plain}"
@@ -305,6 +317,8 @@ start_dashboard() {
 }
 
 stop_dashboard() {
+    echo -e "> 停止面板"
+
     cd $NZ_DASHBOARD_PATH && docker-compose down
     if [[ $? == 0 ]]; then
         echo -e "${green}哪吒面板 停止成功${plain}"
@@ -318,10 +332,47 @@ stop_dashboard() {
 }
 
 show_dashboard_log() {
+    echo -e "> 获取面板日志"
+
     cd $NZ_DASHBOARD_PATH && docker-compose logs -f
 
     if [[ $# == 0 ]]; then
         before_show_menu
+    fi
+}
+
+uninstall_dashboard() {
+    echo -e "> 卸载管理面板"
+
+    cd $NZ_DASHBOARD_PATH &&
+        docker-compose down
+    rm -rf $NZ_DASHBOARD_PATH
+    clean_all
+
+    if [[ $# == 0 ]]; then
+        before_show_menu
+    fi
+}
+
+uninstall_agent() {
+    echo -e "> 卸载Agent"
+
+    systemctl disable nezha-agent.service
+    systemctl stop nezha-agent.service
+    rm -rf $NZ_AGENT_SERVICE
+    systemctl daemon-reload
+
+    rm -rf $NZ_AGENT_PATH
+    clean_all
+
+    if [[ $# == 0 ]]; then
+        before_show_menu
+    fi
+}
+
+clean_all() {
+    if [ -z "$(ls -A ${NZ_BASE_PATH})" ]; then
+        rm -rf ${NZ_BASE_PATH}
     fi
 }
 
@@ -335,9 +386,11 @@ show_usage() {
     echo "./nbdomain.sh stop_dashboard             - 停止面板"
     echo "./nbdomain.sh restart_and_update         - 重启并更新面板"
     echo "./nbdomain.sh show_dashboard_log         - 查看面板日志"
+    echo "./nbdomain.sh uninstall_dashboard        - 卸载管理面板"
     echo "--------------------------------------------------------"
     echo "./nbdomain.sh install_agent              - 安装监控Agent"
     echo "./nbdomain.sh modify_agent_config        - 修改Agent配置"
+    echo "./nbdomain.sh uninstall_agent            - 卸载Agen"
     echo "--------------------------------------------------------"
 }
 
@@ -345,17 +398,19 @@ show_menu() {
     echo -e "
     ${green}哪吒面板管理脚本${plain} ${red}${NZ_VERSION}${plain}
     --- https://github.com/naiba/nezha ---
-    ${green}0.${plain} 退出脚本
-    ————————————————
-    ${green}1.${plain} 安装面板端
-    ${green}2.${plain} 修改面板配置
-    ${green}3.${plain} 启动面板
-    ${green}4.${plain} 停止面板
-    ${green}5.${plain} 重启并更新面板
-    ${green}6.${plain} 查看面板日志
-    ————————————————
-    ${green}7.${plain} 安装监控Agent
-    ${green}8.${plain} 修改Agent配置
+    ${green}0.${plain}  退出脚本
+    ————————————————-
+    ${green}1.${plain}  安装面板端
+    ${green}2.${plain}  修改面板配置
+    ${green}3.${plain}  启动面板
+    ${green}4.${plain}  停止面板
+    ${green}5.${plain}  重启并更新面板
+    ${green}6.${plain}  查看面板日志
+    ${green}7.${plain}  卸载管理面板
+    ————————————————-
+    ${green}8.${plain}  安装监控Agent
+    ${green}9.${plain}  修改Agent配置
+    ${green}10.${plain} 卸载Agent
     "
     echo && read -p "请输入选择 [0-8]: " num
 
@@ -382,10 +437,16 @@ show_menu() {
         show_dashboard_log
         ;;
     7)
-        install_agent
+        uninstall_dashboard
         ;;
     8)
+        install_agent
+        ;;
+    9)
         modify_agent_config
+        ;;
+    10)
+        uninstall_agent
         ;;
     *)
         echo -e "${red}请输入正确的数字 [0-7]${plain}"
@@ -415,11 +476,17 @@ if [[ $# > 0 ]]; then
     "show_dashboard_log")
         show_dashboard_log 0
         ;;
+    "uninstall_dashboard")
+        uninstall_dashboard 0
+        ;;
     "install_agent")
         install_agent 0
         ;;
     "modify_agent_config")
         modify_agent_config 0
+        ;;
+    "uninstall_agent")
+        uninstall_agent 0
         ;;
     *) show_usage ;;
     esac

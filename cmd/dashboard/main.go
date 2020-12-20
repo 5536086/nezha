@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/patrickmn/go-cache"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	"github.com/naiba/nezha/cmd/dashboard/controller"
 	"github.com/naiba/nezha/cmd/dashboard/rpc"
 	"github.com/naiba/nezha/model"
+	"github.com/naiba/nezha/service/alertmanager"
 	"github.com/naiba/nezha/service/dao"
 )
 
@@ -22,7 +23,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	dao.DB, err = gorm.Open("sqlite3", "data/sqlite.db")
+	dao.DB, err = gorm.Open(sqlite.Open("data/sqlite.db"), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
@@ -34,12 +35,14 @@ func init() {
 }
 
 func initDB() {
-	dao.DB.AutoMigrate(model.Server{}, model.User{})
+	dao.DB.AutoMigrate(model.Server{}, model.User{}, model.Notification{}, model.AlertRule{})
 	// load cache
 	var servers []model.Server
 	dao.DB.Find(&servers)
 	for _, s := range servers {
 		innerS := s
+		innerS.Host = &model.Host{}
+		innerS.State = &model.State{}
 		dao.ServerList[fmt.Sprintf("%d", innerS.ID)] = &innerS
 	}
 }
@@ -47,5 +50,6 @@ func initDB() {
 func main() {
 	go controller.ServeWeb(dao.Conf.HTTPPort)
 	go rpc.ServeRPC(5555)
+	go alertmanager.Start()
 	select {}
 }

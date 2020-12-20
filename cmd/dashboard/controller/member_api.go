@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/naiba/nezha/model"
 	"github.com/naiba/nezha/pkg/mygin"
+	"github.com/naiba/nezha/service/alertmanager"
 	"github.com/naiba/nezha/service/dao"
 )
 
@@ -30,7 +33,10 @@ func (ma *memberAPI) serve() {
 
 	mr.POST("/logout", ma.logout)
 	mr.POST("/server", ma.addOrEditServer)
-	mr.DELETE("/server/:id", ma.delete)
+	mr.POST("/notification", ma.addOrEditNotification)
+	mr.POST("/alert-rule", ma.addOrEditAlertRule)
+	mr.POST("/setting", ma.updateSetting)
+	mr.DELETE("/:model/:id", ma.delete)
 }
 
 func (ma *memberAPI) delete(c *gin.Context) {
@@ -42,16 +48,34 @@ func (ma *memberAPI) delete(c *gin.Context) {
 		})
 		return
 	}
-	dao.ServerLock.Lock()
-	defer dao.ServerLock.Unlock()
-	if err := dao.DB.Delete(&model.Server{}, "id = ?", id).Error; err != nil {
+
+	var err error
+	switch c.Param("model") {
+	case "server":
+		dao.ServerLock.Lock()
+		defer dao.ServerLock.Unlock()
+		err = dao.DB.Delete(&model.Server{}, "id = ?", id).Error
+		if err == nil {
+			delete(dao.ServerList, strconv.FormatUint(id, 10))
+		}
+	case "notification":
+		err = dao.DB.Delete(&model.Notification{}, "id = ?", id).Error
+		if err == nil {
+			alertmanager.OnDeleteNotification(id)
+		}
+	case "alert-rule":
+		err = dao.DB.Delete(&model.AlertRule{}, "id = ?", id).Error
+		if err == nil {
+			alertmanager.OnDeleteAlert(id)
+		}
+	}
+	if err != nil {
 		c.JSON(http.StatusOK, model.Response{
 			Code:    http.StatusBadRequest,
 			Message: fmt.Sprintf("数据库错误：%s", err),
 		})
 		return
 	}
-	delete(dao.ServerList, strconv.FormatUint(id, 10))
 	c.JSON(http.StatusOK, model.Response{
 		Code: http.StatusOK,
 	})
@@ -89,7 +113,109 @@ func (ma *memberAPI) addOrEditServer(c *gin.Context) {
 		})
 		return
 	}
+	s.Host = &model.Host{}
+	s.State = &model.State{}
 	dao.ServerList[fmt.Sprintf("%d", s.ID)] = &s
+	c.JSON(http.StatusOK, model.Response{
+		Code: http.StatusOK,
+	})
+}
+
+type notificationForm struct {
+	ID            uint64
+	Name          string
+	URL           string
+	RequestMethod int
+	RequestType   int
+	RequestBody   string
+	VerifySSL     string
+}
+
+func (ma *memberAPI) addOrEditNotification(c *gin.Context) {
+	var nf notificationForm
+	var n model.Notification
+	err := c.ShouldBindJSON(&nf)
+	if err == nil {
+		var data map[string]string
+		err = json.Unmarshal([]byte(nf.RequestBody), &data)
+	}
+	if err == nil {
+		n.Name = nf.Name
+		n.RequestMethod = nf.RequestMethod
+		n.RequestType = nf.RequestType
+		n.RequestBody = nf.RequestBody
+		n.URL = nf.URL
+		verifySSL := nf.VerifySSL == "on"
+		n.VerifySSL = &verifySSL
+		n.ID = nf.ID
+		err = n.Send("这是测试消息")
+	}
+	if err == nil {
+		if n.ID == 0 {
+			err = dao.DB.Create(&n).Error
+		} else {
+			err = dao.DB.Save(&n).Error
+		}
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, model.Response{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("请求错误：%s", err),
+		})
+		return
+	}
+	alertmanager.OnRefreshOrAddNotification(n)
+	c.JSON(http.StatusOK, model.Response{
+		Code: http.StatusOK,
+	})
+}
+
+type alertRuleForm struct {
+	ID       uint64
+	Name     string
+	RulesRaw string
+	Enable   string
+}
+
+func (ma *memberAPI) addOrEditAlertRule(c *gin.Context) {
+	var arf alertRuleForm
+	var r model.AlertRule
+	err := c.ShouldBindJSON(&arf)
+	if err == nil {
+		err = json.Unmarshal([]byte(arf.RulesRaw), &r.Rules)
+	}
+	if err == nil {
+		if len(r.Rules) == 0 {
+			err = errors.New("至少定义一条规则")
+		} else {
+			for i := 0; i < len(r.Rules); i++ {
+				if r.Rules[i].Duration < 3 {
+					err = errors.New("Duration 至少为 3")
+					break
+				}
+			}
+		}
+	}
+	if err == nil {
+		r.Name = arf.Name
+		r.RulesRaw = arf.RulesRaw
+		enable := arf.Enable == "on"
+		r.Enable = &enable
+		r.ID = arf.ID
+		if r.ID == 0 {
+			err = dao.DB.Create(&r).Error
+		} else {
+			err = dao.DB.Save(&r).Error
+		}
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, model.Response{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("请求错误：%s", err),
+		})
+		return
+	}
+	alertmanager.OnRefreshOrAddAlert(r)
 	c.JSON(http.StatusOK, model.Response{
 		Code: http.StatusOK,
 	})
@@ -120,6 +246,38 @@ func (ma *memberAPI) logout(c *gin.Context) {
 		Token:        "",
 		TokenExpired: time.Now(),
 	})
+	c.JSON(http.StatusOK, model.Response{
+		Code: http.StatusOK,
+	})
+}
+
+type settingForm struct {
+	Title     string
+	Admin     string
+	Theme     string
+	CustomCSS string
+}
+
+func (ma *memberAPI) updateSetting(c *gin.Context) {
+	var sf settingForm
+	if err := c.ShouldBind(&sf); err != nil {
+		c.JSON(http.StatusOK, model.Response{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("请求错误：%s", err),
+		})
+		return
+	}
+	dao.Conf.Site.Brand = sf.Title
+	dao.Conf.Site.Theme = sf.Theme
+	dao.Conf.Site.CustomCSS = sf.CustomCSS
+	dao.Conf.GitHub.Admin = sf.Admin
+	if err := dao.Conf.Save(); err != nil {
+		c.JSON(http.StatusOK, model.Response{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("请求错误：%s", err),
+		})
+		return
+	}
 	c.JSON(http.StatusOK, model.Response{
 		Code: http.StatusOK,
 	})

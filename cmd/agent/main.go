@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
+	"github.com/p14yground/go-github-selfupdate/selfupdate"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 
@@ -40,15 +40,12 @@ var (
 )
 
 var (
-	endReport      time.Time
 	reporting      bool
 	client         pb.NezhaServiceClient
 	ctx            = context.Background()
 	delayWhenError = time.Second * 10
 	updateCh       = make(chan struct{}, 0)
 )
-
-const AGENT_UPGRADE = 55
 
 func doSelfUpdate() {
 	defer func() {
@@ -67,7 +64,7 @@ func doSelfUpdate() {
 		log.Println("Current binary is the latest version", version)
 	} else {
 		log.Println("Successfully updated to version", latest.Version)
-		os.Exit(AGENT_UPGRADE)
+		os.Exit(1)
 	}
 }
 
@@ -97,13 +94,14 @@ func run(cmd *cobra.Command, args []string) {
 	// 上报服务器信息
 	go reportState()
 
-	go func() {
-		for range updateCh {
-			go doSelfUpdate()
-		}
-	}()
-
-	updateCh <- struct{}{}
+	if version != "" {
+		go func() {
+			for range updateCh {
+				go doSelfUpdate()
+			}
+		}()
+		updateCh <- struct{}{}
+	}
 
 	var err error
 	var conn *grpc.ClientConn
@@ -161,8 +159,6 @@ func receiveCommand(hc pb.NezhaService_HeartbeatClient) error {
 			return err
 		}
 		switch action.GetType() {
-		case model.MTReportState:
-			endReport = time.Now().Add(time.Minute * 10)
 		default:
 			log.Printf("Unknown action: %v", action)
 		}
@@ -171,17 +167,15 @@ func receiveCommand(hc pb.NezhaService_HeartbeatClient) error {
 
 func reportState() {
 	var err error
-	defer log.Printf("reportState exit %v %v => %v", endReport, time.Now(), err)
+	defer log.Printf("reportState exit %v => %v", time.Now(), err)
 	for {
-		if endReport.After(time.Now()) {
+		if client != nil {
 			monitor.TrackNetworkSpeed()
-			_, err = client.ReportState(ctx, monitor.GetState(2).PB())
+			_, err = client.ReportState(ctx, monitor.GetState(dao.ReportDelay).PB())
 			if err != nil {
 				log.Printf("reportState error %v", err)
 				time.Sleep(delayWhenError)
 			}
-		} else {
-			time.Sleep(time.Second * 1)
 		}
 	}
 }
