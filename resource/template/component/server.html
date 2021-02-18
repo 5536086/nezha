@@ -5,12 +5,24 @@
         <form id="serverForm" class="ui form">
             <input type="hidden" name="id">
             <div class="field">
-                <label>备注</label>
+                <label>名称</label>
                 <input type="text" name="name" placeholder="爱因斯坦-光速1号">
+            </div>
+            <div class="field">
+                <label>分组</label>
+                <input type="text" name="Tag" placeholder="服务器分组">
+            </div>
+            <div class="field">
+                <label>排序</label>
+                <input type="number" name="DisplayIndex" placeholder="越大越靠前">
             </div>
             <div class="secret field">
                 <label>密钥</label>
                 <input type="text" name="secret">
+            </div>
+            <div class="field">
+                <label>备注</label>
+                <textarea name="Note"></textarea>
             </div>
         </form>
     </div>

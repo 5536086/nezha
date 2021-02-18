@@ -8,20 +8,22 @@ import (
 	pb "github.com/naiba/nezha/proto"
 )
 
-// Server ..
 type Server struct {
 	Common
-	Name   string
-	Secret string `json:"-"`
+	Name         string
+	Tag          string // 分组名
+	Secret       string `gorm:"uniqueIndex" json:"-"`
+	Note         string `json:"-"` // 管理员可见备注
+	DisplayIndex int    // 展示排序，越大越靠前
 
-	Host       *Host  `gorm:"-"`
-	State      *State `gorm:"-"`
-	LastActive time.Time
+	Host       *Host      `gorm:"-"`
+	State      *HostState `gorm:"-"`
+	LastActive time.Time  `gorm:"-"`
 
-	Stream      pb.NezhaService_HeartbeatServer `gorm:"-" json:"-"`
-	StreamClose chan<- error                    `gorm:"-" json:"-"`
+	TaskClose  chan error                        `gorm:"-" json:"-"`
+	TaskStream pb.NezhaService_RequestTaskServer `gorm:"-" json:"-"`
 }
 
 func (s Server) Marshal() template.JS {
-	return template.JS(fmt.Sprintf(`{"ID":%d,"Name":"%s","Secret":"%s"}`, s.ID, s.Name, s.Secret))
+	return template.JS(fmt.Sprintf(`{"ID":%d,"Name":"%s","Secret":"%s","DisplayIndex":%d,"Tag":"%s","Note":"%s"}`, s.ID, s.Name, s.Secret, s.DisplayIndex, s.Tag, s.Note))
 }
