@@ -1,10 +1,29 @@
-function readableBytes(bytes) {
-  var i = Math.floor(Math.log(bytes) / Math.log(1024)),
-    sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  return (bytes / Math.pow(1024, i)).toFixed(0) + " " + sizes[i];
+let LANG = {
+  Add: "添加",
+  Edit: "修改",
+  AlarmRule: "报警规则",
+  Notification: "通知方式",
+  Server: "服务器",
+  Monitor: "监控",
+  Cron: "计划任务",
 }
 
-const confirmBtn = $(".mini.confirm.modal .positive.button");
+function updateLang(newLang) {
+  if (newLang) {
+    LANG = newLang;
+  }
+}
+
+function readableBytes(bytes) {
+  if (!bytes) {
+    return '0B'
+  }
+  var i = Math.floor(Math.log(bytes) / Math.log(1024)),
+    sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + sizes[i];
+}
+
+const confirmBtn = $(".mini.confirm.modal .nezha-primary-btn.button");
 
 function showConfirm(title, content, callFn, extData) {
   const modal = $(".mini.confirm.modal");
@@ -31,7 +50,7 @@ function showFormModal(modelSelector, formID, URL, getData) {
       closable: true,
       onApprove: function () {
         let success = false;
-        const btn = $(modelSelector + " .positive.button");
+        const btn = $(modelSelector + " .nezha-primary-btn.button");
         const form = $(modelSelector + " form");
         if (btn.hasClass("loading")) {
           return success;
@@ -41,61 +60,68 @@ function showFormModal(modelSelector, formID, URL, getData) {
         const data = getData
           ? getData()
           : $(formID)
-              .serializeArray()
-              .reduce(function (obj, item) {
-                // ID 类的数据
-                if (
-                  item.name.endsWith("_id") ||
-                  item.name === "id" ||
-                  item.name === "ID" ||
-                  item.name === "RequestType" ||
-                  item.name === "RequestMethod" ||
-                  item.name === "DisplayIndex" ||
-                  item.name === "Type"
-                ) {
-                  obj[item.name] = parseInt(item.value);
-                } else {
-                  obj[item.name] = item.value;
-                }
+            .serializeArray()
+            .reduce(function (obj, item) {
+              // ID 类的数据
+              if (
+                item.name.endsWith("_id") ||
+                item.name === "id" ||
+                item.name === "ID" ||
+                item.name === "RequestType" ||
+                item.name === "RequestMethod" ||
+                item.name === "TriggerMode" ||
+                item.name === "TaskType" ||
+                item.name === "DisplayIndex" ||
+                item.name === "Type" ||
+                item.name === "Cover" ||
+                item.name === "Duration"
+              ) {
+                obj[item.name] = parseInt(item.value);
+              } else if (item.name.endsWith("Latency")) {
+                obj[item.name] = parseFloat(item.value);
+              } else {
+                obj[item.name] = item.value;
+              }
 
-                if (item.name.endsWith("ServersRaw")) {
-                  if (item.value.length > 2) {
-                    obj[item.name] = JSON.stringify(
-                      [...item.value.matchAll(/\d+/gm)].map((k) =>
-                        parseInt(k[0])
-                      )
-                    );
-                  }
+              if (item.name.endsWith("ServersRaw")) {
+                if (item.value.length > 2) {
+                  obj[item.name] = JSON.stringify(
+                    [...item.value.matchAll(/\d+/gm)].map((k) =>
+                      parseInt(k[0])
+                    )
+                  );
                 }
+              }
 
-                return obj;
-              }, {});
+              if (item.name.endsWith("TasksRaw")) {
+                if (item.value.length > 2) {
+                  obj[item.name] = JSON.stringify(
+                    [...item.value.matchAll(/\d+/gm)].map((k) =>
+                      parseInt(k[0])
+                    )
+                  );
+                }
+              }
+
+              return obj;
+            }, {});
         $.post(URL, JSON.stringify(data))
           .done(function (resp) {
             if (resp.code == 200) {
-              if (resp.message) {
-                $.suiAlert({
-                  title: "操作成功",
-                  type: "success",
-                  description: resp.message,
-                  time: "3",
-                  position: "top-center",
-                });
-              }
-              window.location.reload();
+              window.location.reload()
             } else {
               form.append(
                 `<div class="ui negative message"><div class="header">操作失败</div><p>` +
-                  resp.message +
-                  `</p></div>`
+                resp.message +
+                `</p></div>`
               );
             }
           })
           .fail(function (err) {
             form.append(
               `<div class="ui negative message"><div class="header">网络错误</div><p>` +
-                err.responseText +
-                `</p></div>`
+              err.responseText +
+              `</p></div>`
             );
           })
           .always(function () {
@@ -109,36 +135,80 @@ function showFormModal(modelSelector, formID, URL, getData) {
 
 function addOrEditAlertRule(rule) {
   const modal = $(".rule.modal");
-  modal.children(".header").text((rule ? "修改" : "添加") + "报警规则");
+  modal.children(".header").text((rule ? LANG.Edit : LANG.Add) + ' ' + LANG.AlarmRule);
   modal
-    .find(".positive.button")
+    .find(".nezha-primary-btn.button")
     .html(
-      rule ? '修改<i class="edit icon"></i>' : '添加<i class="add icon"></i>'
+      rule ? LANG.Edit + '<i class="edit icon"></i>' : LANG.Add + '<i class="add icon"></i>'
     );
   modal.find("input[name=ID]").val(rule ? rule.ID : null);
   modal.find("input[name=Name]").val(rule ? rule.Name : null);
   modal.find("textarea[name=RulesRaw]").val(rule ? rule.RulesRaw : null);
+  modal.find("select[name=TriggerMode]").val(rule ? rule.TriggerMode : 0);
+  modal.find("input[name=NotificationTag]").val(rule ? rule.NotificationTag : null);
   if (rule && rule.Enable) {
     modal.find(".ui.rule-enable.checkbox").checkbox("set checked");
   } else {
     modal.find(".ui.rule-enable.checkbox").checkbox("set unchecked");
   }
+  modal.find("a.ui.label.visible").each((i, el) => {
+    el.remove();
+  });
+  var failTriggerTasks;
+  var recoverTriggerTasks;
+  if (rule) {
+    failTriggerTasks = rule.FailTriggerTasksRaw;
+    recoverTriggerTasks = rule.RecoverTriggerTasksRaw;
+    const failTriggerTasksList = JSON.parse(failTriggerTasks || "[]");
+    const recoverTriggerTasksList = JSON.parse(recoverTriggerTasks || "[]");
+    const node1 = modal.find("i.dropdown.icon.1");
+    const node2 = modal.find("i.dropdown.icon.2");
+    for (let i = 0; i < failTriggerTasksList.length; i++) {
+      node1.after(
+        '<a class="ui label transition visible" data-value="' +
+        failTriggerTasksList[i] +
+        '" style="display: inline-block !important;">ID:' +
+        failTriggerTasksList[i] +
+        '<i class="delete icon"></i></a>'
+      );
+    }
+    for (let i = 0; i < recoverTriggerTasksList.length; i++) {
+      node2.after(
+        '<a class="ui label transition visible" data-value="' +
+        recoverTriggerTasksList[i] +
+        '" style="display: inline-block !important;">ID:' +
+        recoverTriggerTasksList[i] +
+        '<i class="delete icon"></i></a>'
+      );
+    }
+  }
+  modal
+    .find("input[name=FailTriggerTasksRaw]")
+    .val(rule ? "[]," + failTriggerTasks.substr(1, failTriggerTasks.length - 2) : "[]");
+  modal
+    .find("input[name=RecoverTriggerTasksRaw]")
+    .val(rule ? "[]," + recoverTriggerTasks.substr(1, recoverTriggerTasks.length - 2) : "[]");
+
   showFormModal(".rule.modal", "#ruleForm", "/api/alert-rule");
 }
 
 function addOrEditNotification(notification) {
   const modal = $(".notification.modal");
-  modal.children(".header").text((notification ? "修改" : "添加") + "通知方式");
+  modal.children(".header").text((notification ? LANG.Edit : LANG.Add) + ' ' + LANG.Notification);
   modal
-    .find(".positive.button")
+    .find(".nezha-primary-btn.button")
     .html(
       notification
-        ? '修改<i class="edit icon"></i>'
-        : '添加<i class="add icon"></i>'
+        ? LANG.Edit + '<i class="edit icon"></i>'
+        : LANG.Add + '<i class="add icon"></i>'
     );
   modal.find("input[name=ID]").val(notification ? notification.ID : null);
   modal.find("input[name=Name]").val(notification ? notification.Name : null);
+  modal.find("input[name=Tag]").val(notification ? notification.Tag : null);
   modal.find("input[name=URL]").val(notification ? notification.URL : null);
+  modal
+    .find("textarea[name=RequestHeader]")
+    .val(notification ? notification.RequestHeader : null);
   modal
     .find("textarea[name=RequestBody]")
     .val(notification ? notification.RequestBody : null);
@@ -153,6 +223,7 @@ function addOrEditNotification(notification) {
   } else {
     modal.find(".ui.nf-ssl.checkbox").checkbox("set unchecked");
   }
+  modal.find(".ui.nf-skip-check.checkbox").checkbox("set unchecked");
   showFormModal(
     ".notification.modal",
     "#notificationForm",
@@ -160,13 +231,49 @@ function addOrEditNotification(notification) {
   );
 }
 
-function addOrEditServer(server) {
-  const modal = $(".server.modal");
-  modal.children(".header").text((server ? "修改" : "添加") + "服务器");
+function connectToServer(id) {
+  post('/terminal', { Host: window.location.host, Protocol: window.location.protocol, ID: id })
+}
+
+function post(path, params, method = 'post') {
+  const form = document.createElement('form');
+  form.method = method;
+  form.action = path;
+  form.target = "_blank";
+
+  for (const key in params) {
+    if (params.hasOwnProperty(key)) {
+      const hiddenField = document.createElement('input');
+      hiddenField.type = 'hidden';
+      hiddenField.name = key;
+      hiddenField.value = params[key];
+      form.appendChild(hiddenField);
+    }
+  }
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
+}
+
+function issueNewApiToken(apiToken) {
+  const modal = $(".api.modal");
+  modal.children(".header").text((apiToken ? LANG.Edit : LANG.Add) + ' ' + "API Token");
   modal
-    .find(".positive.button")
+    .find(".nezha-primary-btn.button")
     .html(
-      server ? '修改<i class="edit icon"></i>' : '添加<i class="add icon"></i>'
+      apiToken ? LANG.Edit + '<i class="edit icon"></i>' : LANG.Add + '<i class="add icon"></i>'
+    );
+  modal.find("textarea[name=Note]").val(apiToken ? apiToken.Note : null);
+  showFormModal(".api.modal", "#apiForm", "/api/token");
+}
+
+function addOrEditServer(server, conf) {
+  const modal = $(".server.modal");
+  modal.children(".header").text((server ? LANG.Edit : LANG.Add) + ' ' + LANG.Server);
+  modal
+    .find(".nezha-primary-btn.button")
+    .html(
+      server ? LANG.Edit + '<i class="edit icon"></i>' : LANG.Add + '<i class="add icon"></i>'
     );
   modal.find("input[name=id]").val(server ? server.ID : null);
   modal.find("input[name=name]").val(server ? server.Name : null);
@@ -177,31 +284,52 @@ function addOrEditServer(server) {
   modal.find("textarea[name=Note]").val(server ? server.Note : null);
   if (server) {
     modal.find(".secret.field").attr("style", "");
+    modal.find(".command.field").attr("style", "");
+    modal.find(".command.hostSecret").text(server.Secret);
     modal.find("input[name=secret]").val(server.Secret);
   } else {
     modal.find(".secret.field").attr("style", "display:none");
+    modal.find(".command.field").attr("style", "display:none");
     modal.find("input[name=secret]").val("");
+  }
+  if (server && server.HideForGuest) {
+    modal.find(".ui.hideforguest.checkbox").checkbox("set checked");
+  } else {
+    modal.find(".ui.hideforguest.checkbox").checkbox("set unchecked");
   }
   showFormModal(".server.modal", "#serverForm", "/api/server");
 }
 
 function addOrEditMonitor(monitor) {
   const modal = $(".monitor.modal");
-  modal.children(".header").text((monitor ? "修改" : "添加") + "监控");
+  modal.children(".header").text((monitor ? LANG.Edit : LANG.Add) + ' ' + LANG.Monitor);
   modal
-    .find(".positive.button")
+    .find(".nezha-primary-btn.button")
     .html(
-      monitor ? '修改<i class="edit icon"></i>' : '添加<i class="add icon"></i>'
+      monitor ? LANG.Edit + '<i class="edit icon"></i>' : LANG.Add + '<i class="add icon"></i>'
     );
   modal.find("input[name=ID]").val(monitor ? monitor.ID : null);
   modal.find("input[name=Name]").val(monitor ? monitor.Name : null);
   modal.find("input[name=Target]").val(monitor ? monitor.Target : null);
+  modal.find("input[name=Duration]").val(monitor && monitor.Duration ? monitor.Duration : 30);
   modal.find("select[name=Type]").val(monitor ? monitor.Type : 1);
+  modal.find("select[name=Cover]").val(monitor ? monitor.Cover : 0);
+  modal.find("input[name=NotificationTag]").val(monitor ? monitor.NotificationTag : null);
   if (monitor && monitor.Notify) {
     modal.find(".ui.nb-notify.checkbox").checkbox("set checked");
   } else {
     modal.find(".ui.nb-notify.checkbox").checkbox("set unchecked");
   }
+  modal.find("input[name=MaxLatency]").val(monitor ? monitor.MaxLatency : null);
+  modal.find("input[name=MinLatency]").val(monitor ? monitor.MinLatency : null);
+  if (monitor && monitor.LatencyNotify) {
+    modal.find(".ui.nb-lt-notify.checkbox").checkbox("set checked");
+  } else {
+    modal.find(".ui.nb-lt-notify.checkbox").checkbox("set unchecked");
+  }
+  modal.find("a.ui.label.visible").each((i, el) => {
+    el.remove();
+  });
   var servers;
   if (monitor) {
     servers = monitor.SkipServersRaw;
@@ -210,10 +338,10 @@ function addOrEditMonitor(monitor) {
     for (let i = 0; i < serverList.length; i++) {
       node.after(
         '<a class="ui label transition visible" data-value="' +
-          serverList[i] +
-          '" style="display: inline-block !important;">ID:' +
-          serverList[i] +
-          '<i class="delete icon"></i></a>'
+        serverList[i] +
+        '" style="display: inline-block !important;">ID:' +
+        serverList[i] +
+        '<i class="delete icon"></i></a>'
       );
     }
   }
@@ -225,14 +353,17 @@ function addOrEditMonitor(monitor) {
 
 function addOrEditCron(cron) {
   const modal = $(".cron.modal");
-  modal.children(".header").text((cron ? "修改" : "添加") + "计划任务");
+  modal.children(".header").text((cron ? LANG.Edit : LANG.Add) + ' ' + LANG.Cron);
   modal
-    .find(".positive.button")
+    .find(".nezha-primary-btn.button")
     .html(
-      cron ? '修改<i class="edit icon"></i>' : '添加<i class="add icon"></i>'
+      cron ? LANG.Edit + '<i class="edit icon"></i>' : LANG.Add + '<i class="add icon"></i>'
     );
   modal.find("input[name=ID]").val(cron ? cron.ID : null);
   modal.find("input[name=Name]").val(cron ? cron.Name : null);
+  modal.find("select[name=TaskType]").val(cron ? cron.TaskType : 0);
+  modal.find("select[name=Cover]").val(cron ? cron.Cover : 0);
+  modal.find("input[name=NotificationTag]").val(cron ? cron.NotificationTag : null);
   modal.find("input[name=Scheduler]").val(cron ? cron.Scheduler : null);
   modal.find("a.ui.label.visible").each((i, el) => {
     el.remove();
@@ -245,10 +376,10 @@ function addOrEditCron(cron) {
     for (let i = 0; i < serverList.length; i++) {
       node.after(
         '<a class="ui label transition visible" data-value="' +
-          serverList[i] +
-          '" style="display: inline-block !important;">ID:' +
-          serverList[i] +
-          '<i class="delete icon"></i></a>'
+        serverList[i] +
+        '" style="display: inline-block !important;">ID:' +
+        serverList[i] +
+        '<i class="delete icon"></i></a>'
       );
     }
   }
@@ -367,5 +498,17 @@ $(document).ready(() => {
         cache: false,
       },
     });
-  } catch (error) {}
+  } catch (error) { }
+});
+
+$(document).ready(() => {
+  try {
+    $(".ui.tasks.search.dropdown").dropdown({
+      clearable: true,
+      apiSettings: {
+        url: "/api/search-tasks?word={query}",
+        cache: false,
+      },
+    });
+  } catch (error) { }
 });

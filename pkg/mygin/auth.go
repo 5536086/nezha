@@ -8,13 +8,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/naiba/nezha/model"
-	"github.com/naiba/nezha/service/dao"
+	"github.com/naiba/nezha/service/singleton"
 )
 
 type AuthorizeOption struct {
 	Guest    bool
 	Member   bool
 	IsPage   bool
+	AllowAPI bool
 	Msg      string
 	Redirect string
 	Btn      string
@@ -22,7 +23,7 @@ type AuthorizeOption struct {
 
 func Authorize(opt AuthorizeOption) func(*gin.Context) {
 	return func(c *gin.Context) {
-		var code uint64 = http.StatusForbidden
+		var code = http.StatusForbidden
 		if opt.Guest {
 			code = http.StatusBadRequest
 		}
@@ -34,15 +35,14 @@ func Authorize(opt AuthorizeOption) func(*gin.Context) {
 			Link:  opt.Redirect,
 			Btn:   opt.Btn,
 		}
-
 		var isLogin bool
 
 		// 用户鉴权
-		token, _ := c.Cookie(dao.Conf.Site.CookieName)
+		token, _ := c.Cookie(singleton.Conf.Site.CookieName)
 		token = strings.TrimSpace(token)
 		if token != "" {
 			var u model.User
-			if err := dao.DB.Where("token = ?", token).First(&u).Error; err == nil {
+			if err := singleton.DB.Where("token = ?", token).First(&u).Error; err == nil {
 				isLogin = u.TokenExpired.After(time.Now())
 			}
 			if isLogin {
@@ -50,6 +50,23 @@ func Authorize(opt AuthorizeOption) func(*gin.Context) {
 			}
 		}
 
+		// API鉴权
+		if opt.AllowAPI {
+			apiToken := c.GetHeader("Authorization")
+			if apiToken != "" {
+				var u model.User
+				singleton.ApiLock.RLock()
+				if _, ok := singleton.ApiTokenList[apiToken]; ok {
+					err := singleton.DB.First(&u).Where("id = ?", singleton.ApiTokenList[apiToken].UserID).Error
+					isLogin = err == nil
+				}
+				singleton.ApiLock.RUnlock()
+				if isLogin {
+					c.Set(model.CtxKeyAuthorizedUser, &u)
+					c.Set("isAPI", true)
+				}
+			}
+		}
 		// 已登录且只能游客访问
 		if isLogin && opt.Guest {
 			ShowErrorPage(c, commonErr, opt.IsPage)

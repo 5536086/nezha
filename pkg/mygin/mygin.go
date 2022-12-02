@@ -5,9 +5,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 
 	"github.com/naiba/nezha/model"
-	"github.com/naiba/nezha/service/dao"
+	"github.com/naiba/nezha/service/singleton"
 )
 
 var adminPage = map[string]bool{
@@ -16,23 +17,33 @@ var adminPage = map[string]bool{
 	"/setting":      true,
 	"/notification": true,
 	"/cron":         true,
+	"/api":          true,
 }
 
 func CommonEnvironment(c *gin.Context, data map[string]interface{}) gin.H {
 	data["MatchedPath"] = c.MustGet("MatchedPath")
-	data["Version"] = dao.Version
-	data["Conf"] = dao.Conf
+	data["Version"] = singleton.Version
+	data["Conf"] = singleton.Conf
 	// 是否是管理页面
 	data["IsAdminPage"] = adminPage[data["MatchedPath"].(string)]
 	// 站点标题
 	if t, has := data["Title"]; !has {
-		data["Title"] = dao.Conf.Site.Brand
+		data["Title"] = singleton.Conf.Site.Brand
 	} else {
-		data["Title"] = fmt.Sprintf("%s - %s", t, dao.Conf.Site.Brand)
+		data["Title"] = fmt.Sprintf("%s - %s", t, singleton.Conf.Site.Brand)
 	}
 	u, ok := c.Get(model.CtxKeyAuthorizedUser)
 	if ok {
 		data["Admin"] = u
+	}
+	data["LANG"] = map[string]string{
+		"Add":          singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "Add"}),
+		"Edit":         singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "Edit"}),
+		"AlarmRule":    singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "AlarmRule"}),
+		"Notification": singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "NotificationMethod"}),
+		"Server":       singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "Server"}),
+		"Monitor":      singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "ServicesManagement"}),
+		"Cron":         singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "ScheduledTasks"}),
 	}
 	return data
 }

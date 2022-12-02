@@ -1,135 +1,128 @@
 package model
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"time"
 
+	"github.com/naiba/nezha/pkg/utils"
 	"gorm.io/gorm"
 )
 
 const (
-	RuleCheckPass = 1
-	RuleCheckFail = 0
+	ModeAlwaysTrigger  = 0
+	ModeOnetimeTrigger = 1
 )
 
-type Rule struct {
-	// 指标类型，cpu、memory、swap、disk、net_in_speed、net_out_speed
-	// net_all_speed、transfer_in、transfer_out、transfer_all、offline
-	Type     string          `json:"type,omitempty"`
-	Min      uint64          `json:"min,omitempty"`      // 最小阈值 (百分比、字节 kb ÷ 1024)
-	Max      uint64          `json:"max,omitempty"`      // 最大阈值 (百分比、字节 kb ÷ 1024)
-	Duration uint64          `json:"duration,omitempty"` // 持续时间 (秒)
-	Ignore   map[uint64]bool `json:"ignore,omitempty"`   //忽略此规则的ID列表
-}
-
-func percentage(used, total uint64) uint64 {
-	if total == 0 {
-		return 0
-	}
-	return used * 100 / total
-}
-
-// Snapshot 未通过规则返回 struct{}{}, 通过返回 nil
-func (u *Rule) Snapshot(server *Server) interface{} {
-	if u.Ignore[server.ID] {
-		return nil
-	}
-	var src uint64
-	switch u.Type {
-	case "cpu":
-		src = uint64(server.State.CPU)
-	case "memory":
-		src = percentage(server.State.MemUsed, server.Host.MemTotal)
-	case "swap":
-		src = percentage(server.State.SwapUsed, server.Host.SwapTotal)
-	case "disk":
-		src = percentage(server.State.DiskUsed, server.Host.DiskTotal)
-	case "net_in_speed":
-		src = server.State.NetInSpeed
-	case "net_out_speed":
-		src = server.State.NetOutSpeed
-	case "net_all_speed":
-		src = server.State.NetOutSpeed + server.State.NetOutSpeed
-	case "transfer_in":
-		src = server.State.NetInTransfer
-	case "transfer_out":
-		src = server.State.NetOutTransfer
-	case "transfer_all":
-		src = server.State.NetOutTransfer + server.State.NetInTransfer
-	case "offline":
-		if server.LastActive.IsZero() {
-			src = 0
-		} else {
-			src = uint64(server.LastActive.Unix())
-		}
-	}
-
-	if u.Type == "offline" && uint64(time.Now().Unix())-src > 6 {
-		return struct{}{}
-	} else if (u.Max > 0 && src > u.Max) || (u.Min > 0 && src < u.Min) {
-		return struct{}{}
-	}
-	return nil
+type CycleTransferStats struct {
+	Name       string
+	From       time.Time
+	To         time.Time
+	Max        uint64
+	Min        uint64
+	ServerName map[uint64]string
+	Transfer   map[uint64]uint64
+	NextUpdate map[uint64]time.Time
 }
 
 type AlertRule struct {
 	Common
-	Name     string
-	RulesRaw string
-	Enable   *bool
-	Rules    []Rule `gorm:"-" json:"-"`
+	Name                   string
+	RulesRaw               string
+	Enable                 *bool
+	TriggerMode            int      `gorm:"default:0"` // 触发模式: 0-始终触发(默认) 1-单次触发
+	NotificationTag        string   // 该报警规则所在的通知组
+	FailTriggerTasksRaw    string   `gorm:"default:'[]'"`
+	RecoverTriggerTasksRaw string   `gorm:"default:'[]'"`
+	Rules                  []Rule   `gorm:"-" json:"-"`
+	FailTriggerTasks       []uint64 `gorm:"-" json:"-"` // 失败时执行的触发任务id
+	RecoverTriggerTasks    []uint64 `gorm:"-" json:"-"` // 恢复时执行的触发任务id
 }
 
 func (r *AlertRule) BeforeSave(tx *gorm.DB) error {
-	data, err := json.Marshal(r.Rules)
-	if err != nil {
+	if data, err := utils.Json.Marshal(r.Rules); err != nil {
 		return err
+	} else {
+		r.RulesRaw = string(data)
 	}
-	r.RulesRaw = string(data)
+	if data, err := utils.Json.Marshal(r.FailTriggerTasks); err != nil {
+		return err
+	} else {
+		r.FailTriggerTasksRaw = string(data)
+	}
+	if data, err := utils.Json.Marshal(r.RecoverTriggerTasks); err != nil {
+		return err
+	} else {
+		r.RecoverTriggerTasksRaw = string(data)
+	}
 	return nil
 }
 
 func (r *AlertRule) AfterFind(tx *gorm.DB) error {
-	return json.Unmarshal([]byte(r.RulesRaw), &r.Rules)
+	var err error
+	if err = utils.Json.Unmarshal([]byte(r.RulesRaw), &r.Rules); err != nil {
+		return err
+	}
+	if err = utils.Json.Unmarshal([]byte(r.FailTriggerTasksRaw), &r.FailTriggerTasks); err != nil {
+		return err
+	}
+	if err = utils.Json.Unmarshal([]byte(r.RecoverTriggerTasksRaw), &r.RecoverTriggerTasks); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (r *AlertRule) Snapshot(server *Server) []interface{} {
+func (r *AlertRule) Enabled() bool {
+	return r.Enable != nil && *r.Enable
+}
+
+// Snapshot 对传入的Server进行该报警规则下所有type的检查 返回包含每项检查结果的空接口
+func (r *AlertRule) Snapshot(cycleTransferStats *CycleTransferStats, server *Server, db *gorm.DB) []interface{} {
 	var point []interface{}
 	for i := 0; i < len(r.Rules); i++ {
-		point = append(point, r.Rules[i].Snapshot(server))
+		point = append(point, r.Rules[i].Snapshot(cycleTransferStats, server, db))
 	}
 	return point
 }
 
-func (r *AlertRule) Check(points [][]interface{}) (int, string) {
-	var dist bytes.Buffer
-	var max int
-	var count int
+// Check 传入包含当前报警规则下所有type检查结果的空接口 返回报警持续时间与是否通过报警检查(通过则返回true)
+func (r *AlertRule) Check(points [][]interface{}) (int, bool) {
+	var max int   // 报警持续时间
+	var count int // 检查未通过的个数
 	for i := 0; i < len(r.Rules); i++ {
-		total := 0.0
-		fail := 0.0
-		num := int(r.Rules[i].Duration / 2) // SnapshotDelay
-		if num > max {
-			max = num
-		}
-		if len(points) < num {
-			continue
-		}
-		for j := len(points) - 1; j >= 0 && len(points)-num <= j; j-- {
-			total++
-			if points[j][i] != nil {
-				fail++
+		if r.Rules[i].IsTransferDurationRule() {
+			// 循环区间流量报警
+			if max < 1 {
+				max = 1
+			}
+			for j := len(points[i]) - 1; j >= 0; j-- {
+				if points[i][j] != nil {
+					count++
+					break
+				}
+			}
+		} else {
+			// 常规报警
+			total := 0.0
+			fail := 0.0
+			num := int(r.Rules[i].Duration)
+			if num > max {
+				max = num
+			}
+			if len(points) < num {
+				continue
+			}
+			for j := len(points) - 1; j >= 0 && len(points)-num <= j; j-- {
+				total++
+				if points[j][i] != nil {
+					fail++
+				}
+			}
+			// 当70%以上的采样点未通过规则判断时 才认为当前检查未通过
+			if fail/total > 0.7 {
+				count++
+				break
 			}
 		}
-		if fail/total > 0.7 {
-			count++
-			dist.WriteString(fmt.Sprintf("%+v\n", r.Rules[i]))
-		}
 	}
-	if count == len(r.Rules) {
-		return max, dist.String()
-	}
-	return max, ""
+	// 仅当所有检查均未通过时 返回false
+	return max, count != len(r.Rules)
 }

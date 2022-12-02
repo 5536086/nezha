@@ -6,7 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/naiba/nezha/model"
 	"github.com/naiba/nezha/pkg/mygin"
-	"github.com/naiba/nezha/service/dao"
+	"github.com/naiba/nezha/service/singleton"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
 type memberPage struct {
@@ -18,8 +19,8 @@ func (mp *memberPage) serve() {
 	mr.Use(mygin.Authorize(mygin.AuthorizeOption{
 		Member:   true,
 		IsPage:   true,
-		Msg:      "此页面需要登录",
-		Btn:      "点此登录",
+		Msg:      singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "YouAreNotAuthorized"}),
+		Btn:      singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "Login"}),
 		Redirect: "/login",
 	}))
 	mr.GET("/server", mp.server)
@@ -27,47 +28,60 @@ func (mp *memberPage) serve() {
 	mr.GET("/cron", mp.cron)
 	mr.GET("/notification", mp.notification)
 	mr.GET("/setting", mp.setting)
+	mr.GET("/api", mp.api)
+}
+
+func (mp *memberPage) api(c *gin.Context) {
+	singleton.ApiLock.RLock()
+	defer singleton.ApiLock.RUnlock()
+	c.HTML(http.StatusOK, "dashboard-"+singleton.Conf.Site.DashboardTheme+"/api", mygin.CommonEnvironment(c, gin.H{
+		"title":  singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "ApiManagement"}),
+		"Tokens": singleton.ApiTokenList,
+	}))
 }
 
 func (mp *memberPage) server(c *gin.Context) {
-	dao.SortedServerLock.RLock()
-	defer dao.SortedServerLock.RUnlock()
-	c.HTML(http.StatusOK, "dashboard/server", mygin.CommonEnvironment(c, gin.H{
-		"Title":   "服务器管理",
-		"Servers": dao.SortedServerList,
+	singleton.SortedServerLock.RLock()
+	defer singleton.SortedServerLock.RUnlock()
+	c.HTML(http.StatusOK, "dashboard-"+singleton.Conf.Site.DashboardTheme+"/server", mygin.CommonEnvironment(c, gin.H{
+		"Title":   singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "ServersManagement"}),
+		"Servers": singleton.SortedServerList,
 	}))
 }
 
 func (mp *memberPage) monitor(c *gin.Context) {
-	c.HTML(http.StatusOK, "dashboard/monitor", mygin.CommonEnvironment(c, gin.H{
-		"Title":    "服务监控",
-		"Monitors": dao.ServiceSentinelShared.Monitors(),
+	c.HTML(http.StatusOK, "dashboard-"+singleton.Conf.Site.DashboardTheme+"/monitor", mygin.CommonEnvironment(c, gin.H{
+		"Title":    singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "ServicesManagement"}),
+		"Monitors": singleton.ServiceSentinelShared.Monitors(),
 	}))
 }
 
 func (mp *memberPage) cron(c *gin.Context) {
 	var crons []model.Cron
-	dao.DB.Find(&crons)
-	c.HTML(http.StatusOK, "dashboard/cron", mygin.CommonEnvironment(c, gin.H{
-		"Title": "计划任务",
+	singleton.DB.Find(&crons)
+	c.HTML(http.StatusOK, "dashboard-"+singleton.Conf.Site.DashboardTheme+"/cron", mygin.CommonEnvironment(c, gin.H{
+		"Title": singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "ScheduledTasks"}),
 		"Crons": crons,
 	}))
 }
 
 func (mp *memberPage) notification(c *gin.Context) {
 	var nf []model.Notification
-	dao.DB.Find(&nf)
+	singleton.DB.Find(&nf)
 	var ar []model.AlertRule
-	dao.DB.Find(&ar)
-	c.HTML(http.StatusOK, "dashboard/notification", mygin.CommonEnvironment(c, gin.H{
-		"Title":         "报警通知",
+	singleton.DB.Find(&ar)
+	c.HTML(http.StatusOK, "dashboard-"+singleton.Conf.Site.DashboardTheme+"/notification", mygin.CommonEnvironment(c, gin.H{
+		"Title":         singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "Notification"}),
 		"Notifications": nf,
 		"AlertRules":    ar,
 	}))
 }
 
 func (mp *memberPage) setting(c *gin.Context) {
-	c.HTML(http.StatusOK, "dashboard/setting", mygin.CommonEnvironment(c, gin.H{
-		"Title": "系统设置",
+	c.HTML(http.StatusOK, "dashboard-"+singleton.Conf.Site.DashboardTheme+"/setting", mygin.CommonEnvironment(c, gin.H{
+		"Title":           singleton.Localizer.MustLocalize(&i18n.LocalizeConfig{MessageID: "Settings"}),
+		"Languages":       model.Languages,
+		"Themes":          model.Themes,
+		"DashboardThemes": model.DashboardThemes,
 	}))
 }

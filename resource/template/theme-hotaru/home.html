@@ -1,21 +1,21 @@
 {{define "theme-hotaru/home"}}
 <!doctype html>
-<html lang="zh">
+<html lang="{{.Conf.Language}}">
 
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>{{.Title}}</title>
-    <link rel="shortcut icon" type="image/png" href="/static/logo.png?v20210320" />
+    <link rel="shortcut icon" type="image/png" href="/static/logo.svg?v20210804" />
 
     <!-- Fix chrome language detection -->
     <meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
     <meta http-equiv="Content-Language" content="zh" />
 
     <!-- Styles -->
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
-    <link rel="stylesheet" type="text/css" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.staticfile.org/semantic-ui/2.4.1/semantic.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.staticfile.org/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" type="text/css" href="/static/semantic-ui-alerts.min.css">
     <link rel="stylesheet" href="/static/theme-hotaru/css/core.css?v202012121912" type="text/css">
     <link rel="stylesheet" href="/static/theme-hotaru/css/main.css?v202101171153" type="text/css">
@@ -28,14 +28,9 @@
 <body>
     <section class="hotaru-cover">
         <div class="container" style="text-align: center;">
-            <h1>
+            <h1 style="line-height: 8rem;">
                 <strong>{{.Title}}</strong>
             </h1>
-            <div>
-                <p>
-                    <small>狀態更新和事件報告可能會延遲最多30秒鐘<br />具體取決於手頭的技術問題。請向下滾動查看過去的事件報告</small>
-                </p>
-            </div>
         </div>
     </section>
 
@@ -44,16 +39,16 @@
             <table class="table table-striped">
                 <thead>
                     <tr>
-                        <th>运行状态</th>
-                        <th>节点名</th>
-                        <th>系统</th>
-                        <th>位置</th>
-                        <th>在线</th>
-                        <th>网络(B/s) ↓|↑</th>
-                        <th>流量(B) ↓|↑</th>
+                        <th>{{tr "Status"}}</th>
+                        <th>{{tr "Name"}}</th>
+                        <th>{{tr "Platform"}}</th>
+                        <th>{{tr "Location"}}</th>
+                        <th>{{tr "Uptime"}}</th>
+                        <th>{{tr "NetSpeed"}}(B/s) ↓|↑</th>
+                        <th>{{tr "NetTransfer"}}(B) ↓|↑</th>
                         <th>CPU</th>
                         <th>RAM</th>
-                        <th>硬盘</th>
+                        <th>{{tr "DiskUsed"}}</th>
                     </tr>
                 </thead>
                 <tbody id="servers" style="text-align:center;">
@@ -61,7 +56,7 @@
                         <td>
                             <div class="progress">
                                 <div :class="'state-'+ (server.live?'online':'offline')">
-                                    <small>@#server.live?'运行中':'已离线'#@</small>
+                                    <small>@#server.live?'{{tr "Running"}}':'{{tr "Offline"}}'#@</small>
                                 </div>
                             </div>
                         </td>
@@ -69,9 +64,9 @@
                         <td>@#server.Host?server.Host.Platform:'-'#@</td>
                         <td>@#server.Host?server.Host.CountryCode:'-'#@</td>
                         <td>@#server.State?secondToDate(server.State.Uptime):'-'#@</td>
-                        <td>@#server.State?formatByteSize(server.State.NetInSpeed)+'/s|'+formatByteSize(server.State.NetOutSpeed)+'/s':'-'#@
+                        <td>@#server.State?readableBytes(server.State.NetInSpeed)+'/s|'+readableBytes(server.State.NetOutSpeed)+'/s':'-'#@
                         </td>
-                        <td>@#server.State?formatByteSize(server.State.NetInTransfer)+'|'+formatByteSize(server.State.NetOutTransfer):'-'#@
+                        <td>@#server.State?readableBytes(server.State.NetInTransfer)+'|'+readableBytes(server.State.NetOutTransfer):'-'#@
                         </td>
                         <td>
                             <div v-if="server.State" :class="formatPercent(server.live,server.State.CPU, 100).class">
@@ -123,7 +118,7 @@
                                 </div>
                             </div>
                             <ul class="location-info list-styled">
-                                <li><span class="list-label">网络:</span>
+                                <li><span class="list-label">{{tr "NetSpeed"}}:</span>
                                     @#server.State?formatByteSize(server.State.NetInSpeed)+'/s|'+formatByteSize(server.State.NetOutSpeed)+'/s':'-'#@
                                 </li>
                             </ul>
@@ -135,23 +130,23 @@
     </div>
     <div class="sidebar-container">
         <ul>
-            <li id='sun'><i class="fas fa-sun" title="白昼模式"></i><span>白昼模式</span></li>
-            <li id='moon'><i class="fas fa-moon" title="暗黑模式"></i><span>暗黑模式</span></li>
+            <li id='sun'><i class="fas fa-sun" title='{{tr "LightMode"}}'></i><span>{{tr "LightMode"}}</span></li>
+            <li id='moon'><i class="fas fa-moon" title='{{tr "DarkMode"}}'></i><span>{{tr "DarkMode"}}</span></li>
         </ul>
     </div>
     <footer>
-        <p style="text-align:center;padding: 15px;">Powered by <a href="https://github.com/naiba/nezha">哪吒监控</a> build ·
+        <p style="text-align:center;padding: 15px;">Powered by <a href="https://github.com/naiba/nezha">{{tr "NezhaMonitoring"}}</a> build ·
             {{.Version}}
-            <a href="/service">服务状态</a>
-            <a href="/server">管理后台</a>
+            <a href="/service">{{tr "Services"}}</a>
+            <a href="/server">{{tr "AdminPanel"}}</a>
         </p>
     </footer>
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.1/dist/semantic.min.js"></script>
+    <script src="https://cdn.staticfile.org/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdn.staticfile.org/semantic-ui/2.4.1/semantic.min.js"></script>
     <script src="/static/semantic-ui-alerts.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js"></script>
+    <script src="https://cdn.staticfile.org/vue/2.6.14/vue.min.js"></script>
     <script>
-        const initData = {{.Servers }};
+        const initData = JSON.parse('{{.Servers}}').servers;
         var statusCards = new Vue({
             el: '#app',
             delimiters: ['@#', '#@'],
@@ -191,7 +186,7 @@
                             this.cache[percent].style['background-color'] = 'slategray'
                             this.cache[percent].class.offline = true
                         } else if (percent < 51) {
-                            this.cache[percent].style['background-color'] = 'rgb(0, 235, 139)'
+                            this.cache[percent].style['background-color'] = '#0a94f2'
                             this.cache[percent].class.fine = true
                         } else if (percent < 81) {
                             this.cache[percent].style['background-color'] = 'orange'
@@ -204,9 +199,16 @@
                     return this.cache[percent]
                 },
                 readableBytes(bytes) {
+                    if (!bytes) {
+                        return '0B'
+                    }
                     var i = Math.floor(Math.log(bytes) / Math.log(1024)),
-                        sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-                    return (bytes / Math.pow(1024, i)).toFixed(0) + ' ' + sizes[i];
+                        sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+                    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + sizes[i];
+                },
+                formatByteSize(bs) {
+                    const x = this.readableBytes(bs)
+                    return x != "NaN undefined" ? x : '0B'
                 },
                 troggleDarkMode() {
                     const hour = new Date(Date.now()).getHours()
@@ -217,7 +219,7 @@
                 secondToDate(s) {
                     var d = Math.floor(s / 3600 / 24);
                     if (d > 0) {
-                        return d + "天"
+                        return d + " {{tr "Day"}}"
                     }
                     var h = Math.floor(s / 3600 % 24);
                     var m = Math.floor(s / 60 % 60);
@@ -226,10 +228,6 @@
                 },
                 formatTimestamp(t) {
                     return new Date(t * 1000).toLocaleString()
-                },
-                formatByteSize(bs) {
-                    const x = this.readableBytes(bs)
-                    return x != "NaN undefined" ? x : '0 KB'
                 }
             }
         })
@@ -245,40 +243,55 @@
         })
 
         const wsProtocol = window.location.protocol == "https:" ? "wss" : "ws"
-        const ws = new WebSocket(wsProtocol + '://' + window.location.host + '/ws');
-        ws.onopen = function (evt) {
-            $.suiAlert({
-                title: '实时通道建立',
-                description: '可以实时获取最新监控数据啦',
-                type: 'success',
-                time: '2',
-                position: 'top-center',
-            });
-        }
-        ws.onmessage = function (evt) {
-            statusCards.servers = JSON.parse(evt.data)
-            for (let i = 0; i < statusCards.servers.length; i++) {
-                const ns = statusCards.servers[i];
-                if (!ns.Host) ns.live = false
-                else {
-                    const lastActive = new Date(ns.LastActive).getTime()
-                    if (Date.now() - lastActive > 20 * 1000) {
-                        ns.live = false
-                    } else {
-                        ns.live = true
+        let canShowError = true;
+        function connect() {
+            const ws = new WebSocket(wsProtocol + '://' + window.location.host + '/ws');
+            ws.onopen = function (evt) {
+                canShowError = true;
+                $.suiAlert({
+                    title: '{{tr "RealtimeChannelEstablished"}}',
+                    description: '{{tr "GetTheLatestMonitoringDataInRealTime"}}',
+                    type: 'success',
+                    time: '2',
+                    position: 'top-center',
+                });
+            }
+            ws.onmessage = function (evt) {
+                const data = JSON.parse(evt.data)
+                statusCards.servers = data.servers
+                for (let i = 0; i < statusCards.servers.length; i++) {
+                    const ns = statusCards.servers[i];
+                    if (!ns.Host) ns.live = false
+                    else {
+                        const lastActive = new Date(ns.LastActive).getTime()
+                        if (data.now - lastActive > 10 * 1000) {
+                            ns.live = false
+                        } else {
+                            ns.live = true
+                        }
                     }
                 }
             }
+            ws.onclose = function () {
+                if (canShowError) {
+                    canShowError = false;
+                    $.suiAlert({
+                        title: '{{tr "RealtimeChannelDisconnect"}}',
+                        description: '{{tr "CanNotGetTheLatestMonitoringDataInRealTime"}}',
+                        type: 'warning',
+                        time: '2',
+                        position: 'top-center',
+                    });
+                }
+                setTimeout(function () {
+                    connect()
+                }, 3000);
+            }
+            ws.onerror = function () {
+                ws.close()
+            }
         }
-        ws.onclose = function () {
-            $.suiAlert({
-                title: '实时通道断开',
-                description: '无法实时获取最新监控数据咯',
-                type: 'warning',
-                time: '2',
-                position: 'top-center',
-            });
-        }
+        connect()
     </script>
 </body>
 

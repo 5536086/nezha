@@ -6,10 +6,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/naiba/nezha/model"
+	"github.com/naiba/nezha/service/singleton"
 )
 
 type ErrInfo struct {
-	Code  uint64
+	Code  int
 	Title string
 	Msg   string
 	Link  string
@@ -18,7 +19,7 @@ type ErrInfo struct {
 
 func ShowErrorPage(c *gin.Context, i ErrInfo, isPage bool) {
 	if isPage {
-		c.HTML(http.StatusOK, "dashboard/error", CommonEnvironment(c, gin.H{
+		c.HTML(i.Code, "dashboard-"+singleton.Conf.Site.DashboardTheme+"/error", CommonEnvironment(c, gin.H{
 			"Code":  i.Code,
 			"Title": i.Title,
 			"Msg":   i.Msg,
